@@ -10,9 +10,9 @@ from torchmetrics.functional.image import peak_signal_noise_ratio
 from models.dense_unet import RingArtifactDenseUNet
 
 
-NOISE_PATH = "data/tiff/test/input/Cube_sino00034.tif"
-LABEL_PATH = "data/tiff/test/target/Cube_sino00034.tif"
-CHECKPOINT_PATH = "lightning_logs/denseunet/version_0/checkpoints/epoch=99-step=3100.ckpt"
+NOISE_PATH = "data/tiff/test/input/Cube_sino00046.tif"
+LABEL_PATH = "data/tiff/test/target/Cube_sino00046.tif"
+CHECKPOINT_PATH = "lightning_logs/denseunet_gradloss/version_0/checkpoints/epoch=199-step=6200.ckpt"
 DEVICE = "cuda"
 EPS = 1e-12
 

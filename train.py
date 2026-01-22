@@ -4,12 +4,14 @@ import lightning as pl
 import torch
 from lightning.pytorch.loggers import CSVLogger, TensorBoardLogger
 
-from models.dense_unet import RingArtifactDenseUNet
+from models.dense_unet_gradloss import RingArtifactDenseUNet
 from data_modules.tiff_data import RingArtifactTIFFDataModule
 
 random.seed(42)
 torch.manual_seed(42)
 pl.seed_everything(42)
+
+torch.set_float32_matmul_precision("high")
 
 
 def main():
@@ -18,10 +20,10 @@ def main():
     trainer = pl.Trainer(
         accelerator="gpu",
         precision="bf16-mixed",
-        max_epochs=100,
+        max_epochs=200,
         logger=[
-            CSVLogger(save_dir="lightning_logs", name="denseunet"),
-            TensorBoardLogger(save_dir="lightning_logs", name="denseunet"),
+            CSVLogger(save_dir="lightning_logs", name="denseunet_gradloss"),
+            TensorBoardLogger(save_dir="lightning_logs", name="denseunet_gradloss"),
         ],
         log_every_n_steps=10,
     )
