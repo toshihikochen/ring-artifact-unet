@@ -151,6 +151,7 @@ class RingArtifactDenseUNet(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         noise, label = batch
         pred = self.model(noise)
+        pred = torch.clamp(pred, min=0.0, max=1.0)
         loss = self.criterion(pred, label)
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
