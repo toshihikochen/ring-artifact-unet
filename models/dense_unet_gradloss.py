@@ -186,6 +186,7 @@ class RingArtifactDenseUNet(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         noise, label = batch
         pred = self.model(noise)
+        pred = torch.clamp(pred, min=0.0, max=1.0)
         loss = self.criterion(pred, label)
         psnr = self.psnr(pred, label)
         self.log_dict({"val_loss": loss, "val_psnr": psnr}, on_step=False, on_epoch=True, prog_bar=True)
