@@ -7,16 +7,16 @@ import torch
 import torch.nn as nn
 from torchmetrics.functional.image import peak_signal_noise_ratio
 
-from models.dense_unet import RingArtifactDenseUNet
+from models.residual_dense_unet_gradloss import RingArtifactResidualDenseUNet
 
 
-NOISE_PATH = "data/tiff/test/input/Cube_sino00046.tif"
-LABEL_PATH = "data/tiff/test/target/Cube_sino00046.tif"
-CHECKPOINT_PATH = "lightning_logs/denseunet_gradloss/version_0/checkpoints/epoch=199-step=6200.ckpt"
+NOISE_PATH = "data/tiff/test/input/porous_2_sino00097.tif"
+LABEL_PATH = "data/tiff/test/target/porous_2_sino00097.tif"
+CHECKPOINT_PATH = "lightning_logs/residual_denseunet_gradloss/version_0/checkpoints/epoch=199-step=12600.ckpt"
 DEVICE = "cuda"
-EPS = 1e-12
+EPS = 1e-9
 
-model = RingArtifactDenseUNet.load_from_checkpoint(CHECKPOINT_PATH)
+model = RingArtifactResidualDenseUNet.load_from_checkpoint(CHECKPOINT_PATH)
 model.to(DEVICE)
 model.eval()
 
@@ -43,6 +43,7 @@ def inference_one_image(model: nn.Module, noise_data: np.ndarray) -> np.ndarray:
         pred = model(noise_tensor)
         pred = pred[0]
 
+    pred = torch.clamp(pred, 0, 1)
     pred = pred.squeeze(0).cpu().numpy()
 
     return pred
