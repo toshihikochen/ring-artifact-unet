@@ -77,7 +77,7 @@ class DenseDecoderBlock(nn.Module):
         return x
 
 
-class DenseUNet(nn.Module):
+class ResidualDenseUNet(nn.Module):
     def __init__(
             self, in_channels, out_channels,
             growth_rate=32,
@@ -172,7 +172,7 @@ class Criterion(nn.Module):
 class RingArtifactResidualDenseUNet(pl.LightningModule):
     def __init__(self, learning_rate: float = 3e-4):
         super().__init__()
-        self.model = DenseUNet(in_channels=1, out_channels=1)
+        self.model = ResidualDenseUNet(in_channels=1, out_channels=1)
         self.criterion = Criterion()
         self.psnr = PeakSignalNoiseRatio(data_range=1.0)
         self.learning_rate = learning_rate
@@ -190,7 +190,6 @@ class RingArtifactResidualDenseUNet(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         noise, label = batch
         pred = self.model(noise)
-        pred = torch.clamp(pred, min=0.0, max=1.0)
         loss = self.criterion(pred, label)
         psnr = self.psnr(pred, label)
         self.log_dict({"val_loss": loss, "val_psnr": psnr}, on_step=False, on_epoch=True, prog_bar=True)

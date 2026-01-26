@@ -1,11 +1,10 @@
 """
-DenseUNet
+DenseUNet + GradLoss
 """
 import lightning as pl
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.nn import L1Loss
 from torchmetrics.image import PeakSignalNoiseRatio
 
 
