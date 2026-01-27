@@ -7,16 +7,18 @@ import torch
 import torch.nn as nn
 from torchmetrics.functional.image import peak_signal_noise_ratio
 
-from models.residual_dense_unet_gradloss import RingArtifactResidualDenseUNet
+from models import get_model
 
 
-NOISE_PATH = "data/tiff/test/input/porous_2_sino00097.tif"
-LABEL_PATH = "data/tiff/test/target/porous_2_sino00097.tif"
-CHECKPOINT_PATH = "lightning_logs/residual_denseunet_gradloss/version_0/checkpoints/epoch=199-step=12600.ckpt"
+NOISE_PATH = "data/example/noise.tif"
+LABEL_PATH = "data/example/target.tif"
+MODEL_NAME = "residual_dense_unet"
+CHECKPOINT_PATH = "lightning_logs/residual_dense_unet/version_0/checkpoints/epoch=199-step=12600.ckpt"
 DEVICE = "cuda"
 EPS = 1e-9
 
-model = RingArtifactResidualDenseUNet.load_from_checkpoint(CHECKPOINT_PATH)
+model_class = get_model(MODEL_NAME)
+model = model_class.load_from_checkpoint(CHECKPOINT_PATH)
 model.to(DEVICE)
 model.eval()
 
@@ -61,14 +63,13 @@ def visualize(inputs: np.ndarray, pred: np.ndarray, label: Optional[np.ndarray] 
     maximum, minimum = inputs.max(), inputs.min()
     inputs = (inputs - minimum) / (maximum - minimum + EPS)
 
-    # maximum, minimum = pred.max(), pred.min()
-    # pred = (pred - minimum) / (maximum - minimum + EPS)
-
     maximum, minimum = label.max(), label.min()
     label = (label - minimum) / (maximum - minimum + EPS)
 
+    delta = np.abs(pred - label)
+
     if label is not None:
-        fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+        fig, axes = plt.subplots(1, 4, figsize=(12, 4))
 
         axes[0].matshow(inputs)
         axes[0].set_title("Input (Noise)")
@@ -81,6 +82,10 @@ def visualize(inputs: np.ndarray, pred: np.ndarray, label: Optional[np.ndarray] 
         axes[2].matshow(label)
         axes[2].set_title("Label (GT)")
         axes[2].axis('off')
+
+        axes[3].matshow(delta)
+        axes[3].set_title("Delta")
+        axes[3].axis('off')
     else:
         fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 

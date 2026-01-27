@@ -1,9 +1,10 @@
 """
-Residual DenseUNet + GradLoss
+Feature Pyramid Network based Residual DenseUNet + GradLoss
 """
 import lightning as pl
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torchmetrics.image import PeakSignalNoiseRatio
 
@@ -77,7 +78,7 @@ class DenseDecoderBlock(nn.Module):
         return x
 
 
-class ResidualDenseUNet(nn.Module):
+class FPNResidualDenseUNet(nn.Module):
     def __init__(
             self, in_channels, out_channels,
             growth_rate=32,
@@ -112,17 +113,19 @@ class ResidualDenseUNet(nn.Module):
 
         self.dec4 = DenseDecoderBlock(bottleneck_out, skip4_c, g, decoder_layers_config[0], c4)
         dec4_out = c4 + skip4_c + g * decoder_layers_config[0]
+        self.final_conv_4 = nn.Conv2d(dec4_out, out_channels, 1)
 
         self.dec3 = DenseDecoderBlock(dec4_out, skip3_c, g, decoder_layers_config[1], c3)
         dec3_out = c3 + skip3_c + g * decoder_layers_config[1]
+        self.final_conv_3 = nn.Conv2d(dec3_out, out_channels, 1)
 
         self.dec2 = DenseDecoderBlock(dec3_out, skip2_c, g, decoder_layers_config[2], c2)
         dec2_out = c2 + skip2_c + g * decoder_layers_config[2]
+        self.final_conv_2 = nn.Conv2d(dec2_out, out_channels, 1)
 
         self.dec1 = DenseDecoderBlock(dec2_out, skip1_c, g, decoder_layers_config[3], c1)
         dec1_out = c1 + skip1_c + g * decoder_layers_config[3]
-
-        self.final_conv = nn.Conv2d(dec1_out, out_channels, 1)
+        self.final_conv_1 = nn.Conv2d(dec1_out, out_channels, 1)
 
     def forward(self, x):
         x, s1 = self.enc1(x)
@@ -133,11 +136,18 @@ class ResidualDenseUNet(nn.Module):
         x = self.bottleneck(x)
 
         x = self.dec4(x, s4)
-        x = self.dec3(x, s3)
-        x = self.dec2(x, s2)
-        x = self.dec1(x, s1)
+        out4 = self.final_conv_4(x)
 
-        return self.final_conv(x)
+        x = self.dec3(x, s3)
+        out3 = self.final_conv_3(x)
+
+        x = self.dec2(x, s2)
+        out2 = self.final_conv_2(x)
+
+        x = self.dec1(x, s1)
+        out1 = self.final_conv_1(x)
+
+        return out1, out2, out3, out4
 
 
 class GradLoss(nn.Module):
@@ -169,11 +179,25 @@ class Criterion(nn.Module):
         return loss
 
 
-class RingArtifactResidualDenseUNet(pl.LightningModule):
+class FPNCriterion(nn.Module):
+    def __init__(self, *weights, alpha: float = 0.5):
+        super().__init__()
+        self.criterion = Criterion(alpha)
+        self.weights = weights
+
+    def forward(self, *preds, label):
+        loss = 0
+        for i, weight in enumerate(self.weights):
+            reshaped_label = F.interpolate(label, preds[i].shape[2:], mode="nearest")
+            loss += weight * self.criterion(preds[i], reshaped_label)
+        return loss
+
+
+class RingArtifactFPNResidualDenseUNet(pl.LightningModule):
     def __init__(self, learning_rate: float = 3e-4):
         super().__init__()
-        self.model = ResidualDenseUNet(in_channels=1, out_channels=1)
-        self.criterion = Criterion()
+        self.model = FPNResidualDenseUNet(in_channels=1, out_channels=1)
+        self.criterion = FPNCriterion(1.0, 0.6, 0.4, 0.1, alpha=0.5)
         self.psnr = PeakSignalNoiseRatio(data_range=1.0)
         self.learning_rate = learning_rate
 
@@ -183,17 +207,30 @@ class RingArtifactResidualDenseUNet(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         noise, label = batch
         pred = self.model(noise)
-        loss = self.criterion(pred, label)
+        loss = self.criterion(*pred, label=label)
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         noise, label = batch
         pred = self.model(noise)
-        loss = self.criterion(pred, label)
-        psnr = self.psnr(pred, label)
+        loss = self.criterion(*pred, label=label)
+        psnr = self.psnr(pred[0], label)
         self.log_dict({"val_loss": loss, "val_psnr": psnr}, on_step=False, on_epoch=True, prog_bar=True)
         return loss
+
+    def test_step(self, batch, batch_idx):
+        noise, label = batch
+        pred = self.model(noise)
+        loss = self.criterion(pred, label)
+        psnr = self.psnr(pred[0], label)
+        self.log_dict({"test_loss": loss, "test_psnr": psnr}, on_step=False, on_epoch=True, prog_bar=True)
+
+    def predict_step(self, batch, batch_idx=None):
+        noise = batch
+        pred = self.model(noise)[0]
+        pred = torch.clamp(pred, min=0.0, max=1.0)
+        return pred
 
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), lr=self.learning_rate)

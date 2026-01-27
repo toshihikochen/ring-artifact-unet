@@ -113,11 +113,23 @@ class RingArtifactVanillaUNet(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         noise, label = batch
         pred = self.model(noise)
-        pred = torch.clamp(pred, min=0.0, max=1.0)
         loss = self.criterion(pred, label)
         psnr = self.psnr(pred, label)
         self.log_dict({"val_loss": loss, "val_psnr": psnr}, on_step=False, on_epoch=True, prog_bar=True)
         return loss
+
+    def test_step(self, batch, batch_idx):
+        noise, label = batch
+        pred = self.model(noise)
+        loss = self.criterion(pred, label)
+        psnr = self.psnr(pred, label)
+        self.log_dict({"test_loss": loss, "test_psnr": psnr}, on_step=False, on_epoch=True, prog_bar=True)
+
+    def predict_step(self, batch, batch_idx=None):
+        noise = batch
+        pred = self.model(noise)
+        pred = torch.clamp(pred, min=0.0, max=1.0)
+        return pred
 
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), lr=self.learning_rate)

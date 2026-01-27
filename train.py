@@ -1,30 +1,48 @@
-import random
+from typing import Literal
 
 import lightning as pl
 import torch
 from lightning.pytorch.loggers import CSVLogger, TensorBoardLogger
 
-from models.fpn_residual_dense_unet_gradloss import RingArtifactFPNResidualDenseUNet
 from data_modules.tiff_data import RingArtifactTIFFDataModule
+from models import get_model
 
-random.seed(42)
-torch.manual_seed(42)
-pl.seed_everything(42)
+"""
+"vanilla_unet": 基础 U-Net
+"dense_unet": 密集连接 U-Net
+"dense_unet_gradloss": 带图像梯度损失的密集 U-Net
+"residual_dense_unet": 残差密集 U-Net（带图像梯度损失）
+"fpn_residual_dense_unet": 特征金字塔残差密集 U-Net（带图像梯度损失）
+"""
+MODEL_NAME = "vanilla_unet"
 
-torch.set_float32_matmul_precision("high")
+BATCH_SIZE = 4
+BATCH_ACCUMULATION = 2
+RANDOM_SEED = 42
+EPOCHS = 200
+NUM_WORKERS = 4
+PIN_MEMORY = True
+
+
+pl.seed_everything(RANDOM_SEED)
+torch.set_float32_matmul_precision("high")  # for Ampere or higher gpus
 
 
 def main():
-    data_module = RingArtifactTIFFDataModule(train_dir="data/tiff/train", val_dir="data/tiff/val", batch_size=4)
-    model = RingArtifactFPNResidualDenseUNet()
+    data_module = RingArtifactTIFFDataModule(
+        train_dir="data/tiff/train", val_dir="data/tiff/val",
+        batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY
+    )
+    model = get_model(MODEL_NAME)()
     trainer = pl.Trainer(
         accelerator="gpu",
         precision="bf16-mixed",
-        accumulate_grad_batches=2,
-        max_epochs=200,
+        accumulate_grad_batches=BATCH_ACCUMULATION,
+        max_epochs=EPOCHS,
+        deterministic=True,
         logger=[
-            CSVLogger(save_dir="lightning_logs", name="fpn_residual_denseunet_gradloss"),
-            TensorBoardLogger(save_dir="lightning_logs", name="fpn_residual_denseunet_gradloss"),
+            CSVLogger(save_dir="lightning_logs", name=MODEL_NAME),
+            TensorBoardLogger(save_dir="tensorboard_logs", name=MODEL_NAME),
         ],
         log_every_n_steps=10,
     )
