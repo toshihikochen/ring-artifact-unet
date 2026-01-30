@@ -15,6 +15,11 @@ dependencies = [
     "torchvision>=0.24.1",
 ]
 
+[project.optional-dependencies]
+synthesize = [
+    "astra-toolbox>=2.4.1",
+]
+
 
 [tool.uv.sources]
 torch = [
