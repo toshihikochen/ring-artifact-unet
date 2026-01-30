@@ -1,3 +1,4 @@
+import glob
 import os
 import random
 
@@ -12,48 +13,64 @@ EPS = 1e-9
 
 
 class RingArtifactTIFFDataset(Dataset):
+    """
+    数据集目录结构示例：
+
+    train/
+    ├── label/
+    │   ├── 001-something-0001.tiff
+    │   ├── ...
+    │   └── 114-other_thing-1919.tiff
+    └── noisy/
+        ├── 001-something-0001-000.tiff
+        ├── ...
+        ├── 001-something-0001-072.tiff  # 一个label可以对应多个noisy
+        ├── 001-something-0002-000.tiff
+        └── ...
+    """
     def __init__(self, data_dir: str, stage: str = "train"):
-        self.label_dir = os.path.join(data_dir, "target")
-        self.noise_dir = os.path.join(data_dir, "input")
+        self.label_dir = os.path.join(data_dir, "label")
+        self.noisy_dir = os.path.join(data_dir, "noisy")
         self.stage = stage
 
-        self.data_list = []
-        for filename in os.listdir(self.label_dir):
-            noise_path = os.path.join(self.noise_dir, filename)
-            if os.path.exists(noise_path):
-                self.data_list.append(filename)
+        self.data_list = os.listdir(self.label_dir)
 
     def __len__(self):
         return len(self.data_list)
 
     def __getitem__(self, index):
-        noise_path = os.path.join(self.noise_dir, self.data_list[index])
         label_path = os.path.join(self.label_dir, self.data_list[index])
 
-        noise_data = tifffile.imread(noise_path)
+        # randomly pick a noisy image
+        name, _ = os.path.splitext(os.path.basename(label_path))
+        pattern = os.path.join(self.noisy_dir, f"{name}*.tiff")
+        noisy_path = random.choice(glob.glob(pattern))
+
+        noisy_data = tifffile.imread(noisy_path)
         label_data = tifffile.imread(label_path)
 
         # normalize to [0, 1] using noise data
-        minimum, maximum = noise_data.min(), noise_data.max()
-        noise_data = (noise_data - minimum) / (maximum - minimum + EPS)
+        minimum, maximum = noisy_data.min(), noisy_data.max()
+        noisy_data = (noisy_data - minimum) / (maximum - minimum + EPS)
 
         minimum, maximum = label_data.min(), label_data.max()
         label_data = (label_data - minimum) / (maximum - minimum + EPS)
 
         # random crop from (720, 256) to (256, 256) when training
+        # when validating or testing, use the whole image
         if self.stage == "train":
             rand = random.randint(0, 720 - 256)
-            noise_data = noise_data[rand:rand+256, :]
+            noisy_data = noisy_data[rand:rand + 256, :]
             label_data = label_data[rand:rand+256, :]
 
-        # expand dimension
-        noise_data = np.expand_dims(noise_data, axis=0)
+        # expand dimension to (1, 256, 256)
+        noisy_data = np.expand_dims(noisy_data, axis=0)
         label_data = np.expand_dims(label_data, axis=0)
 
-        noise_tensor = torch.from_numpy(noise_data).float()
+        noisy_tensor = torch.from_numpy(noisy_data).float()
         label_tensor = torch.from_numpy(label_data).float()
 
-        return noise_tensor, label_tensor
+        return noisy_tensor, label_tensor
 
 
 class RingArtifactTIFFDataModule(LightningDataModule):
@@ -69,11 +86,15 @@ class RingArtifactTIFFDataModule(LightningDataModule):
     def train_dataloader(self):
         return DataLoader(
             self.train_dataset,
-            batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers, persistent_workers=True, pin_memory=self.pin_memory, drop_last=True,
+            batch_size=self.batch_size, shuffle=True, drop_last=True,
+            num_workers=self.num_workers, persistent_workers=True if self.num_workers > 0 else False,
+            pin_memory=self.pin_memory
         )
 
     def val_dataloader(self):
         return DataLoader(
             self.val_dataset,
-            batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, persistent_workers=True, pin_memory=self.pin_memory, drop_last=False
+            batch_size=self.batch_size, shuffle=False, drop_last=False,
+            num_workers=self.num_workers, persistent_workers=True if self.num_workers > 0 else False,
+            pin_memory=self.pin_memory
         )
