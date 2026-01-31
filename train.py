@@ -16,6 +16,9 @@ from models import get_model
 """
 MODEL_NAME = "vanilla_unet"
 
+TRAIN_DIR = "data/my_tiff/train"
+VAL_DIR = "data/my_tiff/val"
+
 BATCH_SIZE = 4
 BATCH_ACCUMULATION = 2
 RANDOM_SEED = 42
@@ -25,12 +28,13 @@ PIN_MEMORY = True
 
 
 pl.seed_everything(RANDOM_SEED)
-torch.set_float32_matmul_precision("high")  # for Ampere or higher gpus
+if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8:  # for Ampere or higher gpus
+    torch.set_float32_matmul_precision("high")
 
 
 def main():
     data_module = RingArtifactTIFFDataModule(
-        train_dir="data/tiff/train", val_dir="data/tiff/val",
+        train_dir=TRAIN_DIR, val_dir=VAL_DIR,
         batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY
     )
     model = get_model(MODEL_NAME)()

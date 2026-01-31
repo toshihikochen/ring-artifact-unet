@@ -6,7 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torchmetrics.image import PeakSignalNoiseRatio
+from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
+from torchmetrics.functional.image import image_gradients
 
 
 class DenseLayer(nn.Module):
@@ -153,16 +154,12 @@ class FPNResidualDenseUNet(nn.Module):
 class GradLoss(nn.Module):
     def __init__(self):
         super().__init__()
-        self.criterion = nn.L1Loss()
+        self.criterion = nn.MSELoss()
 
     def forward(self, pred, label):
-        grad_pred_x = pred[:, :, :, :-1] - pred[:, :, :, 1:]
-        grad_pred_y = pred[:, :, :-1, :] - pred[:, :, 1:, :]
-
-        grad_label_x = label[:, :, :, :-1] - label[:, :, :, 1:]
-        grad_label_y = label[:, :, :-1, :] - label[:, :, 1:, :]
-
-        loss = self.criterion(grad_pred_x, grad_label_x) + self.criterion(grad_pred_y, grad_label_y)
+        pred_dy, pred_dx = image_gradients(pred)
+        label_dy, label_dx = image_gradients(label)
+        loss = self.criterion(pred_dy, label_dy) + self.criterion(pred_dx, label_dx)
 
         return loss
 
@@ -196,10 +193,11 @@ class FPNCriterion(nn.Module):
 class RingArtifactFPNResidualDenseUNet(pl.LightningModule):
     def __init__(self, learning_rate: float = 3e-4):
         super().__init__()
+        self.learning_rate = learning_rate
         self.model = FPNResidualDenseUNet(in_channels=1, out_channels=1)
         self.criterion = FPNCriterion(1.0, 0.6, 0.4, 0.1, alpha=0.5)
         self.psnr = PeakSignalNoiseRatio(data_range=1.0)
-        self.learning_rate = learning_rate
+        self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
 
     def forward(self, x):
         return self.model(x)
@@ -213,18 +211,18 @@ class RingArtifactFPNResidualDenseUNet(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         noise, label = batch
-        pred = self.model(noise)
-        loss = self.criterion(*pred, label=label)
-        psnr = self.psnr(pred[0], label)
-        self.log_dict({"val_loss": loss, "val_psnr": psnr}, on_step=False, on_epoch=True, prog_bar=True)
+        preds = self.model(noise)
+        loss = self.criterion(*preds, label=label)
+        psnr, ssim = self.psnr(preds[0], label), self.ssim(preds[0], label)
+        self.log_dict({"val_loss": loss, "val_psnr": psnr, "val_ssim": ssim}, on_step=False, on_epoch=True, prog_bar=True)
         return loss
 
     def test_step(self, batch, batch_idx):
         noise, label = batch
-        pred = self.model(noise)
-        loss = self.criterion(pred, label)
-        psnr = self.psnr(pred[0], label)
-        self.log_dict({"test_loss": loss, "test_psnr": psnr}, on_step=False, on_epoch=True, prog_bar=True)
+        preds = self.model(noise)
+        loss = self.criterion(preds, label)
+        psnr, ssim = self.psnr(preds[0], label), self.ssim(preds[0], label)
+        self.log_dict({"test_loss": loss, "test_psnr": psnr, "test_ssim": ssim}, on_step=False, on_epoch=True, prog_bar=True)
 
     def predict_step(self, batch, batch_idx=None):
         noise = batch

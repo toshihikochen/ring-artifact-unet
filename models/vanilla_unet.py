@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.nn import L1Loss
-from torchmetrics.image import PeakSignalNoiseRatio
+from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 
 
 class DoubleConv(nn.Module):
@@ -95,10 +95,11 @@ class UNet(nn.Module):
 class RingArtifactVanillaUNet(pl.LightningModule):
     def __init__(self, learning_rate: float = 3e-5):
         super().__init__()
+        self.learning_rate = learning_rate
         self.model = UNet(in_channels=1, out_channels=1)
         self.criterion = L1Loss()
         self.psnr = PeakSignalNoiseRatio(data_range=1.0)
-        self.learning_rate = learning_rate
+        self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
 
     def forward(self, x):
         return self.model(x)
@@ -114,16 +115,16 @@ class RingArtifactVanillaUNet(pl.LightningModule):
         noise, label = batch
         pred = self.model(noise)
         loss = self.criterion(pred, label)
-        psnr = self.psnr(pred, label)
-        self.log_dict({"val_loss": loss, "val_psnr": psnr}, on_step=False, on_epoch=True, prog_bar=True)
+        psnr, ssim = self.psnr(pred, label), self.ssim(pred, label)
+        self.log_dict({"val_loss": loss, "val_psnr": psnr, "val_ssim": ssim}, on_step=False, on_epoch=True, prog_bar=True)
         return loss
 
     def test_step(self, batch, batch_idx):
         noise, label = batch
         pred = self.model(noise)
         loss = self.criterion(pred, label)
-        psnr = self.psnr(pred, label)
-        self.log_dict({"test_loss": loss, "test_psnr": psnr}, on_step=False, on_epoch=True, prog_bar=True)
+        psnr, ssim = self.psnr(pred, label), self.ssim(pred, label)
+        self.log_dict({"test_loss": loss, "test_psnr": psnr, "test_ssim": ssim}, on_step=False, on_epoch=True, prog_bar=True)
 
     def predict_step(self, batch, batch_idx=None):
         noise = batch

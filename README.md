@@ -11,7 +11,16 @@ A project for denoising ring artifact using various UNet variants.
 3. [Residual DenseUNet](models/residual_dense_unet.py)
 4. [FPN Residual DenseUNet](models/fpn_residual_dense_unet.py)
 
-> Note: Starting from Residual DenseUNet, GradLoss is added to the loss function.
+```mermaid
+flowchart TD
+    subgraph Network Improvement
+        unet[Vanilla UNet] --> dense_unet[DenseUNet] --> residual_dense_unet[Residual DenseUNet] --> fpn_residual_dense_unet[FPN Residual DenseUNet]
+    end
+    subgraph "Criterion Improvement" 
+        dense_unet --> grad_loss[+grad loss]
+        dense_unet --> ssim_loss[+SSIM loss]
+    end
+```
 
 # Result
 
