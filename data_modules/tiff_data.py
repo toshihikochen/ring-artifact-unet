@@ -19,13 +19,14 @@ class RingArtifactTIFFDataset(Dataset):
     train/
     ├── label/
     │   ├── 001-something-0001.tiff
+    │   ├── 001-something-0002.tiff
     │   ├── ...
     │   └── 114-other_thing-1919.tiff
     └── noisy/
         ├── 001-something-0001-000.tiff
         ├── ...
-        ├── 001-something-0001-072.tiff  # 一个label可以对应多个noisy
-        ├── 001-something-0002-000.tiff
+        ├── 001-something-0001-072.tiff  # 一个label可以对应多个noisy（添加后缀）
+        ├── 001-something-0002.tiff      # 也可以一个label对应一个noisy（文件名相同）
         └── ...
     """
     def __init__(self, data_dir: str, stage: str = "train"):
@@ -33,18 +34,32 @@ class RingArtifactTIFFDataset(Dataset):
         self.noisy_dir = os.path.join(data_dir, "noisy")
         self.stage = stage
 
-        self.data_list = os.listdir(self.label_dir)
+        self.label_to_noisy = []
+        self.noisy_to_label = []
+
+        for label_filename in os.listdir(self.label_dir):
+            name, ext = os.path.splitext(label_filename)
+            noisy_pattern = os.path.join(self.noisy_dir, f"{name}*{ext}")
+
+            label_path = os.path.join(self.label_dir, label_filename)
+            noisy_paths = glob.glob(noisy_pattern)
+
+            self.label_to_noisy.append((label_path, noisy_paths))
+            for noisy_path in noisy_paths:
+                self.noisy_to_label.append((noisy_path, label_path))
+
 
     def __len__(self):
-        return len(self.data_list)
+        if self.stage == "train":
+            return len(self.label_to_noisy)
+        return len(self.noisy_to_label)
 
     def __getitem__(self, index):
-        label_path = os.path.join(self.label_dir, self.data_list[index])
-
-        # randomly pick a noisy image
-        name, _ = os.path.splitext(os.path.basename(label_path))
-        pattern = os.path.join(self.noisy_dir, f"{name}*.tiff")
-        noisy_path = random.choice(glob.glob(pattern))
+        if self.stage == "train":  # randomly choose one noisy corresponding to the label while training
+            label_path, noisy_paths = self.label_to_noisy[index]
+            noisy_path = random.choice(noisy_paths)
+        else:  # pick all noisy corresponding to the label while validating or testing
+            noisy_path, label_path = self.noisy_to_label[index]
 
         noisy_data = tifffile.imread(noisy_path)
         label_data = tifffile.imread(label_path)
