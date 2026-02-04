@@ -18,29 +18,34 @@ MODEL_NAME = "vanilla_unet"
 
 TRAIN_DIR = "data/my_tiff/train"
 VAL_DIR = "data/my_tiff/val"
+TEST_DIR = "data/my_tiff/test"  # or set to None when no test set
 
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 BATCH_ACCUMULATION = 2
 RANDOM_SEED = 42
 EPOCHS = 200
 NUM_WORKERS = 4
 PIN_MEMORY = True
+PRECISION = None
 
 
 pl.seed_everything(RANDOM_SEED)
 if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8:  # for Ampere or higher gpus
     torch.set_float32_matmul_precision("high")
+    PRECISION = PRECISION or "bf16-mixed"
+else:
+    PRECISION = PRECISION or "float32"
 
 
 def main():
     data_module = RingArtifactTIFFDataModule(
-        train_dir=TRAIN_DIR, val_dir=VAL_DIR,
+        train_dir=TRAIN_DIR, val_dir=VAL_DIR, test_dir=TEST_DIR,
         batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY
     )
     model = get_model(MODEL_NAME)()
     trainer = pl.Trainer(
         accelerator="gpu",
-        precision="bf16-mixed",
+        precision=PRECISION,
         accumulate_grad_batches=BATCH_ACCUMULATION,
         max_epochs=EPOCHS,
         deterministic=True,
@@ -51,6 +56,8 @@ def main():
         log_every_n_steps=10,
     )
     trainer.fit(model, data_module)
+    if TEST_DIR:
+        trainer.test(model, data_module)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import glob
 import os
 import random
+from typing import Optional
 
 import numpy as np
 import tifffile
@@ -71,7 +72,7 @@ class RingArtifactTIFFDataset(Dataset):
         minimum, maximum = label_data.min(), label_data.max()
         label_data = (label_data - minimum) / (maximum - minimum + EPS)
 
-        # random crop from (720, 256) to (256, 256) when training
+        # random crop image from (720, 256) to (256, 256) when training
         # when validating or testing, use the whole image
         if self.stage == "train":
             rand = random.randint(0, 720 - 256)
@@ -89,7 +90,7 @@ class RingArtifactTIFFDataset(Dataset):
 
 
 class RingArtifactTIFFDataModule(LightningDataModule):
-    def __init__(self, train_dir: str, val_dir: str, batch_size: int = 16, num_workers: int = 0, pin_memory: bool = False):
+    def __init__(self, train_dir: str, val_dir: str, test_dir: Optional[str] = None, batch_size: int = 16, num_workers: int = 0, pin_memory: bool = False):
         super().__init__()
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -97,6 +98,7 @@ class RingArtifactTIFFDataModule(LightningDataModule):
 
         self.train_dataset = RingArtifactTIFFDataset(train_dir, stage="train")
         self.val_dataset = RingArtifactTIFFDataset(val_dir, stage="val")
+        self.test_dataset = RingArtifactTIFFDataset(test_dir, stage="val") if test_dir else None
 
     def train_dataloader(self):
         return DataLoader(
@@ -113,3 +115,11 @@ class RingArtifactTIFFDataModule(LightningDataModule):
             num_workers=self.num_workers, persistent_workers=True if self.num_workers > 0 else False,
             pin_memory=self.pin_memory
         )
+
+    def test_dataloader(self):
+        return DataLoader(
+            self.test_dataset,
+            batch_size=self.batch_size, shuffle=False, drop_last=False,
+            num_workers=self.num_workers, persistent_workers=True if self.num_workers > 0 else False,
+            pin_memory=self.pin_memory
+        ) if self.test_dataset else None
