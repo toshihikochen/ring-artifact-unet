@@ -185,8 +185,8 @@ class FPNCriterion(nn.Module):
     def forward(self, *preds, label):
         loss = 0
         for i, weight in enumerate(self.weights):
-            reshaped_label = F.interpolate(label, preds[i].shape[2:], mode="nearest")
-            loss += weight * self.criterion(preds[i], reshaped_label)
+            reshaped_pred = F.interpolate(preds[i], label.shape[2:], mode="bilinear", align_corners=False)
+            loss += weight * self.criterion(reshaped_pred, label)
         return loss
 
 
@@ -195,7 +195,7 @@ class RingArtifactFPNResidualDenseUNet(pl.LightningModule):
         super().__init__()
         self.learning_rate = learning_rate
         self.model = FPNResidualDenseUNet(in_channels=1, out_channels=1)
-        self.criterion = FPNCriterion(1.0, 0.6, 0.4, 0.1, alpha=0.5)
+        self.criterion = FPNCriterion(1.0, 0.6, 0.3, 0.1, alpha=0.5)
         self.psnr = PeakSignalNoiseRatio(data_range=1.0)
         self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0)
 
@@ -220,7 +220,7 @@ class RingArtifactFPNResidualDenseUNet(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         noise, label = batch
         preds = self.model(noise)
-        loss = self.criterion(preds, label)
+        loss = self.criterion(preds, label=label)
         psnr, ssim = self.psnr(preds[0], label), self.ssim(preds[0], label)
         self.log_dict({"test_loss": loss, "test_psnr": psnr, "test_ssim": ssim}, on_step=False, on_epoch=True, prog_bar=True)
 
